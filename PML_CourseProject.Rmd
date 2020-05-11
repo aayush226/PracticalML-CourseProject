@@ -1,3 +1,8 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
 # **Practical Machine Learning Course Project**
 
 **Aayush Shah**
@@ -203,9 +208,13 @@ conf_mat3$overall[1]
 ```
 So the accuracy is `r conf_mat3$overall[1]`
 
+The accuracy rate using the random forest is very high *out-of-sample-error is equal to 0.0264*.
+
+
 ## **Predicting the validation data with the best model**
 
 On comparison, the accuracy of the Random Forest model is the highest. So will use it on the _validation_ dataset.
+
 
 ```{r}
 result<-predict(modRF1,newdata=validation)
