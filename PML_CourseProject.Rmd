@@ -1,0 +1,216 @@
+# **Practical Machine Learning Course Project**
+
+**Aayush Shah**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+
+```
+
+## **Introduction/Overview**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The data consists of training dataset and testing dataset (to be used to validate the selected model).
+
+The goal of this project is to predict the manner in which they did the exercise. This is the _classe_ variable in the training set.
+
+But first, we load all the libraries.
+
+```{r}
+library(caret)
+library(ggplot2)
+library(rattle)
+library(randomForest)
+library(corrplot)
+library(gbm)
+```
+
+## **Exploratory Data Analysis**
+
+We get the data.
+
+```{r}
+filename1<-"pml-testing.csv"
+filename2<-"pml-training.csv"
+if (!file.exists(filename1)){
+  url1<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(url1, filename1, method="curl")
+}  
+if (!file.exists(filename2)){
+  url2<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(url2, filename2, method="curl")
+}
+```
+
+Then we load and read the data.
+
+```{r}
+trainInput<-read.csv("pml-training.csv")
+validationInput<-read.csv("pml-testing.csv")
+```
+
+Now we explore our data.
+```{r}
+dim(trainInput)
+dim(validationInput)
+str(trainInput)
+
+```
+
+So there `r dim(trainInput)[1] ` observations of `r dim(trainInput)[2]` variables in the _trainInput_ dataset.
+
+But on observation we find that there are lots of variables with missing values. So we remove them before proceeding.
+
+```{r}
+training<- trainInput[,colSums(is.na(trainInput)) == 0]
+validation <- validationInput[,colSums(is.na(validationInput)) == 0]
+str(training)
+str(validation)
+```
+
+So now the the _trainInput_ dataset is reduced to _training_ dataset with `r dim(training)[1]` observations of `r dim(training)[2]` variables.
+
+The first seven variables have little impact on _classe_ variable. So we remove them too.
+
+```{r}
+training<-training[,-c(1:7)]
+validation<-validation[,-c(1:7)]
+
+```
+
+
+## **Predictive Analysis**
+
+Lets split the training dataset into 70% _trainData_ and 30% _testData_ datasets.(The _validation_ dataset will be used later to test the prodiction algorithm on the 20 cases.)
+
+```{r}
+set.seed(1234) 
+inTrain<-createDataPartition(y=training$classe,p=0.7,list=FALSE)
+trainData<-training[inTrain,]
+testData<-training[-inTrain,]
+```
+
+On Observation, we see that lot of variable have near zero variance. So we remove them.
+
+```{r}
+NZV <- nearZeroVar(trainData)
+trainData <- trainData[, -NZV]
+testData  <- testData[, -NZV]
+dim(trainData)
+```
+
+
+Lets keep the _testData_ aside for some time.
+
+Now the question is to find the correlation in the remaining variables except the _classe_ variable. Lets do that visually.
+
+```{r}
+cor_matrix <- cor(trainData[, -53])
+corrplot(cor_matrix, order = "alphabet", method = "circle", type = "lower",tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+As we see, highly correlated variables have a darker colour intersection and bigger circles.
+
+To get the names of these variables having correlation higher than 0.75 we do this;
+
+```{r}
+high_corr = findCorrelation(cor_matrix, cutoff=0.75)
+names(trainData)[high_corr]
+
+```
+
+
+Now lets build our models.
+
+We will use the following methods to predict the **_classe_** variable;
+
+  1] Classification Trees
+  
+  2] Random Forests
+  
+  3] Generalized Boosted Models
+  
+In order to limit the effects of overfitting, and improve the efficicency of the models, we will use the **cross validation** technique. We will use 5 folds.
+
+
+### **Classification Trees**
+
+```{r}
+trControl <- trainControl(method="cv", number=5)
+model_CT <- train(classe~., data=trainData, method="rpart", trControl=trControl)
+fancyRpartPlot(model_CT$finalModel)
+
+```
+
+Now we predict using the testData set.
+
+```{r}
+pred<-predict(model_CT,newdata=testData)
+conf_mat<-confusionMatrix(testData$classe,pred)
+conf_mat$table
+conf_mat$overall[1]
+```
+
+We see that the accuracy is `r conf_mat$overall[1]`, which is very low. So _classe_ is not well predicted by other variables in this model.
+
+### **Random Forests**
+
+```{r}
+set.seed(1234)
+trControl <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modRF1 <- train(classe ~ ., data=trainData, method="rf", trControl=trControl)
+```
+
+
+```{r}
+print(modRF1)
+plot(modRF1,main="Accuracy of Random forest model by number of predictors")
+
+```
+
+Now we predict using the testData set.
+
+```{r}
+pred2<-predict(modRF1,newdata=testData)
+conf_mat2<-confusionMatrix(testData$classe,pred2)
+conf_mat2$table
+
+conf_mat2$overall[1]
+
+```
+
+We see that the accuracy is `r conf_mat2$overall[1]`, which is very high. So _classe_ is very well predicted by other variables in this model.
+
+This is very good. But let’s see what we can expect with Gradient boosting.
+
+### **Gradient Boosting Method**
+
+```{r}
+model_GBM <- train(classe~., data=trainData, method="gbm", trControl=trControl, verbose=FALSE)
+print(model_GBM)
+plot(model_GBM)
+```
+
+Now we predict using testData
+
+```{r}
+pred3<-predict(model_GBM,newdata=testData)
+conf_mat3<-confusionMatrix(testData$classe,pred3)
+conf_mat3$table
+conf_mat3$overall[1]
+```
+So the accuracy is `r conf_mat3$overall[1]`
+
+## **Predicting the validation data with the best model**
+
+On comparison, the accuracy of the Random Forest model is the highest. So will use it on the _validation_ dataset.
+
+```{r}
+result<-predict(modRF1,newdata=validation)
+result
+```
+
+This _result_ will be used to answer the quiz.
+
